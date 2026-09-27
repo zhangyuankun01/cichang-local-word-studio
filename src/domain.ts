@@ -13,10 +13,10 @@ export type WordEntry = {
   audioData?: string;
   status: WordStatus;
   createdAt: number;
-  dueAt: number;
-  intervalDays: number;
   repetitions: number;
-  lastReviewedAt?: number;
+  correctStreak: number;
+  reviewBox: number;
+  reviewAtCount: number;
 };
 
 export type DailyStats = {
@@ -24,17 +24,18 @@ export type DailyStats = {
   known: number;
   again: number;
   newIntroduced: number;
+  reviewIntroduced: number;
 };
 
 export type SessionFeedback = {
   wordId: string;
   rating: Rating;
-  dueAt: number;
 };
 
 export type ActiveSession = {
   date: string;
   ids: string[];
+  seenIds: string[];
   index: number;
   mode: PracticeMode;
   feedback: SessionFeedback | null;
@@ -42,11 +43,13 @@ export type ActiveSession = {
 
 export type AppData = {
   version: 1;
+  reviewCount: number;
   words: WordEntry[];
   studyDays: Record<string, DailyStats>;
   activeSession: ActiveSession | null;
   settings: {
     dailyGoal: number;
+    dailyReviewGoal: number;
     speechRate: number;
     voiceURI: string;
   };
@@ -84,6 +87,7 @@ export function createInitialData(): AppData {
   const now = Date.now();
   return {
     version: 1,
+    reviewCount: 0,
     words: starterEntries.map(([word, meaning, partOfSpeech, phonetic, example, translation], index) => ({
       id: `starter-${index + 1}`,
       word,
@@ -94,13 +98,14 @@ export function createInitialData(): AppData {
       translation,
       status: "new",
       createdAt: now + index,
-      dueAt: now,
-      intervalDays: 0,
       repetitions: 0,
+      correctStreak: 0,
+      reviewBox: 0,
+      reviewAtCount: 0,
     })),
     studyDays: {},
     activeSession: null,
-    settings: { dailyGoal: 10, speechRate: 0.9, voiceURI: "" },
+    settings: { dailyGoal: 10, dailyReviewGoal: 30, speechRate: 0.9, voiceURI: "" },
   };
 }
 
@@ -117,7 +122,7 @@ export function lookupStarterWord(word: string): Pick<WordEntry, "meaning" | "pa
 }
 
 export function emptyDailyStats(): DailyStats {
-  return { answered: 0, known: 0, again: 0, newIntroduced: 0 };
+  return { answered: 0, known: 0, again: 0, newIntroduced: 0, reviewIntroduced: 0 };
 }
 
 export function decodeAppData(raw: string | null): AppData | null {
@@ -125,6 +130,7 @@ export function decodeAppData(raw: string | null): AppData | null {
   try {
     const value = JSON.parse(raw) as Partial<AppData>;
     if (value.version !== 1 || !Array.isArray(value.words)) return null;
+    const reviewCount = Math.max(0, Number(value.reviewCount) || 0);
     const words = value.words
       .filter((word) => Boolean(word && typeof word.id === "string" && typeof word.word === "string"))
       .map((word) => {
@@ -141,13 +147,19 @@ export function decodeAppData(raw: string | null): AppData | null {
           audioData: typeof entry.audioData === "string" && entry.audioData.startsWith("data:audio/") ? entry.audioData : undefined,
           status,
           createdAt: Number.isFinite(entry.createdAt) ? Number(entry.createdAt) : Date.now(),
-          dueAt: Number.isFinite(entry.dueAt) ? Number(entry.dueAt) : Date.now(),
-          intervalDays: Math.max(0, Number(entry.intervalDays) || 0),
           repetitions: Math.max(0, Number(entry.repetitions) || 0),
-          lastReviewedAt: Number.isFinite(entry.lastReviewedAt) ? Number(entry.lastReviewedAt) : undefined,
+          correctStreak: Number.isFinite(entry.correctStreak)
+            ? Math.max(0, Number(entry.correctStreak))
+            : status === "mastered" ? 3 : 0,
+          reviewBox: Number.isFinite(entry.reviewBox)
+            ? Math.min(5, Math.max(0, Math.floor(Number(entry.reviewBox))))
+            : status === "mastered" ? 1 : 0,
+          reviewAtCount: Number.isFinite(entry.reviewAtCount)
+            ? Math.max(0, Number(entry.reviewAtCount))
+            : status === "mastered" ? reviewCount + 12 : reviewCount,
         } satisfies WordEntry;
       });
-    const settings = value.settings ?? { dailyGoal: 10, speechRate: 0.9, voiceURI: "" };
+    const settings = value.settings ?? { dailyGoal: 10, dailyReviewGoal: 30, speechRate: 0.9, voiceURI: "" };
     const studyDays: Record<string, DailyStats> = {};
     if (value.studyDays && typeof value.studyDays === "object") {
       for (const [key, rawStats] of Object.entries(value.studyDays)) {
@@ -158,24 +170,34 @@ export function decodeAppData(raw: string | null): AppData | null {
           known: Math.max(0, Number(stats.known) || 0),
           again: Math.max(0, Number(stats.again) || 0),
           newIntroduced: Math.max(0, Number(stats.newIntroduced) || 0),
+          reviewIntroduced: Math.max(0, Number(stats.reviewIntroduced) || 0),
         };
       }
     }
     const rawSession = value.activeSession;
     let activeSession: ActiveSession | null = null;
     if (rawSession && typeof rawSession.date === "string" && Array.isArray(rawSession.ids)) {
-      const ids = rawSession.ids.filter((id): id is string =>
+      let ids = rawSession.ids.filter((id): id is string =>
         typeof id === "string" && words.some((word) => word.id === id),
       );
       const feedback = rawSession.feedback
         && typeof rawSession.feedback.wordId === "string"
         && ids.includes(rawSession.feedback.wordId)
         && (rawSession.feedback.rating === "known" || rawSession.feedback.rating === "again")
-        ? { wordId: rawSession.feedback.wordId, rating: rawSession.feedback.rating, dueAt: Number(rawSession.feedback.dueAt) || Date.now() }
+        ? { wordId: rawSession.feedback.wordId, rating: rawSession.feedback.rating }
         : null;
+      if (feedback && ids.filter((id) => id === feedback.wordId).length < 2) {
+        const word = words.find((entry) => entry.id === feedback.wordId);
+        if (feedback.rating === "again" || (word && word.status !== "mastered" && word.correctStreak < 3)) {
+          ids = [...ids, feedback.wordId];
+        }
+      }
       activeSession = {
         date: rawSession.date,
         ids,
+        seenIds: Array.isArray(rawSession.seenIds)
+          ? rawSession.seenIds.filter((id): id is string => typeof id === "string" && words.some((word) => word.id === id))
+          : feedback ? [feedback.wordId] : [],
         index: Math.min(ids.length, Math.max(0, Math.floor(Number(rawSession.index) || 0))),
         mode: rawSession.mode === "audio-first" ? "audio-first" : "word-first",
         feedback,
@@ -183,11 +205,13 @@ export function decodeAppData(raw: string | null): AppData | null {
     }
     return {
       version: 1,
+      reviewCount,
       words,
       studyDays,
       activeSession,
       settings: {
-        dailyGoal: Math.max(1, Math.min(50, Number(settings.dailyGoal) || 10)),
+        dailyGoal: Math.max(0, Math.min(500, Number.isFinite(settings.dailyGoal) ? Number(settings.dailyGoal) : 10)),
+        dailyReviewGoal: Math.max(0, Math.min(500, Number.isFinite(settings.dailyReviewGoal) ? Number(settings.dailyReviewGoal) : 30)),
         speechRate: Math.max(0.65, Math.min(1.2, Number(settings.speechRate) || 0.9)),
         voiceURI: typeof settings.voiceURI === "string" ? settings.voiceURI : "",
       },
@@ -197,20 +221,29 @@ export function decodeAppData(raw: string | null): AppData | null {
   }
 }
 
-export function createSession(data: AppData, date = todayKey(), now = Date.now()): ActiveSession {
+export function createSession(data: AppData, date = todayKey()): ActiveSession {
   const dayStats = data.studyDays[date] ?? emptyDailyStats();
   const due = data.words
-    .filter((word) => word.status !== "new" && word.dueAt <= now)
-    .sort((a, b) => a.dueAt - b.dueAt);
+    .filter((word) => word.status !== "new" && word.reviewAtCount <= data.reviewCount)
+    .sort((a, b) => a.reviewAtCount - b.reviewAtCount || a.correctStreak - b.correctStreak)
+    .slice(0, Math.max(0, data.settings.dailyReviewGoal - dayStats.reviewIntroduced));
   const newLimit = Math.max(0, data.settings.dailyGoal - dayStats.newIntroduced);
   const fresh = data.words
     .filter((word) => word.status === "new")
     .sort((a, b) => a.createdAt - b.createdAt)
     .slice(0, newLimit);
+  const reviewCapacity = Math.max(0, data.settings.dailyReviewGoal - dayStats.reviewIntroduced);
+  const fallback = due.length === 0 && fresh.length === 0 && reviewCapacity > 0
+    ? data.words
+      .filter((word) => word.status !== "new")
+      .sort((a, b) => a.reviewAtCount - b.reviewAtCount)
+      .slice(0, 1)
+    : [];
 
   return {
     date,
-    ids: [...due, ...fresh].map((word) => word.id),
+    ids: [...due, ...fresh, ...fallback].map((word) => word.id),
+    seenIds: [],
     index: 0,
     mode: "word-first",
     feedback: null,

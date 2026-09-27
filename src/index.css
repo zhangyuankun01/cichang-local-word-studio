@@ -332,7 +332,7 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .system-voice-copy strong { color: #586258; font-size: 10px; font-weight: 620; }
 .system-voice-copy span { color: #999d93; font-size: 9px; }
 .voice-controls { display: flex; align-items: center; gap: 17px; }
-.setting-select-wrap select, .goal-setting select { height: 32px; max-width: 225px; padding: 0 25px 0 9px; border: 1px solid #e1e2d9; border-radius: 5px; color: #697365; background: #faf9f5; font-size: 9px; }
+.setting-select-wrap select, .goal-setting select, .goal-setting input { height: 32px; max-width: 225px; padding: 0 9px; border: 1px solid #e1e2d9; border-radius: 5px; color: #697365; background: #faf9f5; font-size: 9px; }
 .rate-control { display: flex; align-items: center; gap: 7px; color: #959a8f; font-size: 9px; white-space: nowrap; }
 .rate-control input { width: 72px; accent-color: #78905f; }
 .rate-control strong { color: #75816c; font-size: 9px; font-weight: 550; }
@@ -340,8 +340,10 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .speech-troubleshooting svg { flex: 0 0 15px; margin-top: 1px; }
 .speech-troubleshooting p { margin: 0; font-size: 9px; line-height: 1.65; }
 .goal-setting { display: flex; align-items: center; gap: 15px; margin: 18px 0 0 48px; color: #687166; font-size: 10px; }
-.goal-setting select { margin-left: auto; }
+.goal-setting select, .goal-setting input { margin-left: auto; }
+.goal-setting input { width: 100px; }
 .goal-progress { color: #9b9e94; font-size: 9px; }
+.plan-settings-note { margin: 12px 0 0 48px; color: #9b9e94; font-size: 9px; }
 .storage-location { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin: 19px 0 0 48px; padding: 13px 14px; border: 1px solid #e2e4da; border-radius: 6px; background: #f9f8f3; }
 .storage-location > div { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
 .storage-location > div > span { color: #999d93; font-size: 9px; }
@@ -544,7 +546,7 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   .settings-icon { flex-basis: 31px; width: 31px; height: 31px; }
   .settings-section-heading h2 { font-size: 18px; }
   .settings-section-heading p { font-size: 9px; }
-  .piper-config, .system-voice-settings, .speech-troubleshooting, .goal-setting, .storage-location, .backup-actions, .backup-warning { margin-left: 0; }
+  .piper-config, .system-voice-settings, .speech-troubleshooting, .goal-setting, .storage-location, .backup-actions, .backup-warning, .plan-settings-note { margin-left: 0; }
   .piper-config { padding: 12px; }
   .engine-files { grid-template-columns: 1fr; }
   .system-voice-settings { gap: 10px; }
@@ -553,7 +555,7 @@ button:disabled { cursor: not-allowed; opacity: .48; }
   .rate-control input { flex: 1; }
   .rate-control { width: 100%; }
   .goal-setting { flex-wrap: wrap; gap: 8px; }
-  .goal-setting select { margin-left: auto; }
+  .goal-setting select, .goal-setting input { margin-left: auto; }
   .goal-progress { width: 100%; }
   .storage-location { align-items: flex-start; flex-direction: column; }
   .storage-location > div { width: 100%; }

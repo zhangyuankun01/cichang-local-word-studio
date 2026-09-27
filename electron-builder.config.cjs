@@ -18,7 +18,7 @@ module.exports = {
   ],
   extraMetadata: {
     name: "cichang-local-word-studio",
-    version: "1.0.1",
+    version: "1.0.2",
     main: "electron/main.cjs",
   },
   asar: true,

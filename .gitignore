@@ -1,0 +1,9 @@
+node_modules/
+dist/
+release/
+dist-desktop/
+*.log
+.DS_Store
+# Unused duplicate voice model and downloaded vendor archive
+resources/piper-voice/en_US-lessac-medium.onnx
+resources/piper/piper_windows_amd64.zip

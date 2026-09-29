@@ -7,7 +7,7 @@
 1. 在仓库根目录执行 npm run build:mini-shared，生成与桌面同源的 CSV/TXT/JSON 解析器（生成文件已包含在目录中）。
 2. 用微信开发者工具导入本 miniprogram 目录。项目暂用 touristappid；正式调试需替换成自己的 AppID。
 3. 学习界面先隐藏释义和例句，选认识、模糊或不认识后核对；可纠正误判。我的页面可设置每日新词/复习目标和导入导出。
-4. 在线发音由开发者在 config.js 设置 HTTPS /api/tts 地址，再在微信公众平台配置 request 合法域名。普通使用者无需填写接口或密钥。当前尚未接通服务。
+4. 在线发音已连接 Cloudflare Workers AI 的 MeloTTS 服务。开发者工具本地测试时可关闭域名校验；正式发布前须在微信公众平台配置 request 合法域名。客户端不保存 Cloudflare 密钥。
 5. 可从桌面导出完整 JSON 备份，在小程序选择导入；确认替换后恢复学习进度，并将备份内录音写入本机缓存。
 
 ## 数据和音频
@@ -18,4 +18,4 @@
 
 ## 验证与部署边界
 
-已提供 npm run test:study 的业务与模拟微信 API 场景检查。尚待微信开发者工具和真机验证，touristappid 不是正式发布 AppID。cloudflare-worker 只提供服务端模板，已从客户端打包中排除；上线前仍需部署和鉴权限流接入。
+已提供 npm run test:study 的业务与模拟微信 API 场景检查。发音 Worker 已部署并完成线上 WAV 生成与缓存验证，服务端源码仍从小程序客户端包中排除。尚待微信开发者工具和真机验证，touristappid 不是正式发布 AppID；面向多用户上线前还应加入微信登录身份校验。

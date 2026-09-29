@@ -1,13 +1,23 @@
-# 词场小程序 TTS Worker（本地模板）
+# 词场小程序 TTS Worker
 
-这个目录只包含待部署模板，不会自动连接或修改账户内的 Worker。
+生产 Worker 已部署为 `black-rain-e57e`：
+
+- 健康检查：<https://black-rain-e57e.zhangyuankun0.workers.dev/health>
+- 发音接口：<https://black-rain-e57e.zhangyuankun0.workers.dev/api/tts>
+- Workers AI 模型：`@cf/myshell-ai/melotts`
 
 ## 接口
 
-`POST /api/tts`，请求 JSON：`{"text":"hello"}`；响应 JSON：`{"audio":"<base64>","contentType":"audio/wav"}`。实现根据音频字节头保留实测返回的 WAV，其他情况按 MP3 处理。`GET /health` 只返回健康状态。
+`POST /api/tts`，请求 JSON：`{"text":"hello"}`；响应 JSON：`{"audio":"<base64>","contentType":"audio/wav"}`。实现根据音频字节头识别实测返回的 WAV，其他情况按 MP3 处理。`GET /health` 返回服务与模型状态。
+
+接口只接受不超过 64 个字符的英文单词或短语。相同文本会使用边缘缓存，未命中的语音生成限制为每个 Cloudflare 节点每分钟 30 次。接口不接收用户资料；若以后面向多用户正式发布，仍应加入微信登录身份校验。
 
 ## 本地试运行
 
-安装 Wrangler 后，在此目录使用 `npx wrangler dev`；首次本地启动前按 Cloudflare 官方流程登录 Wrangler 并连接 Workers AI。开发者工具测试域名需要能从手机访问，不能使用电脑的 `localhost`。
+在本目录执行 `npm install`，然后可使用：
 
-部署之前须先确定生产 HTTPS 域名、微信 request 合法域名，并为公开接口加入微信登录态校验与限流/滥用防护。当前模板不含账户认证，不能直接作为正式公开接口。小程序代码中不放 Cloudflare API Token、AppSecret 或 Worker 私钥。
+- `npm run check`：只检查打包和绑定，不发布。
+- `npm run dev`：本地开发预览；Workers AI 推理仍会计入账户用量。
+- `npm run deploy`：更新生产 Worker。
+
+小程序代码中不放 Cloudflare API Token、AppSecret 或 Worker 私钥。正式发布小程序前，还要在微信公众平台配置 request 合法域名；开发者工具本地测试可暂时关闭域名校验。

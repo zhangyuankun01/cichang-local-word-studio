@@ -1,6 +1,0 @@
-name = "cichang-miniprogram-tts"
-main = "src/index.js"
-compatibility_date = "2026-09-29"
-
-[ai]
-binding = "AI"

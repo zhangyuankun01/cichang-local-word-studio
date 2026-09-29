@@ -1,0 +1,6 @@
+{
+  "pages": ["pages/index/index"],
+  "window": { "navigationBarTitleText": "词场", "navigationBarBackgroundColor": "#f7f6f2", "navigationBarTextStyle": "black", "backgroundColor": "#f7f6f2" },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

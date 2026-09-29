@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+.answer-button.fuzzy { background: #f3ecd9; color: #896c34; border-color: #e6d8b6; }
+.recall-hint { color: #7d8981; font-size: 13px; text-align: center; margin: 12px 0; }
+.answer-buttons .answer-button { flex: 1; min-width: 0; }
+
 :root {
   font-family: Inter, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   color: #1d2d28;

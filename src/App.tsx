@@ -6,7 +6,10 @@ import {
   PracticeMode,
   Rating,
   WordEntry,
-  WordStatus,
+  MASTERY_STREAK,
+  isDue,
+  answer as gradeAnswer,
+  regradeAnswer,
   createInitialData,
   createSession,
   decodeAppData,
@@ -37,9 +40,7 @@ type DesktopBridge = {
   openDataFolder: () => Promise<void>;
   saveTextFile: (name: string, content: string) => Promise<boolean>;
 };
-const MASTERY_STREAK = 3;
-const REVIEW_GAPS = [12, 24, 48, 96, 192, 384];
-const RETRY_GAP = 2;
+
 
 declare global {
   interface Window {
@@ -172,7 +173,6 @@ function App() {
   const [duplicatePolicy, setDuplicatePolicy] = useState<DuplicatePolicy>("skip");
   const [importOutcome, setImportOutcome] = useState<ImportOutcome | null>(null);
   const [readingFile, setReadingFile] = useState(false);
-  const [revealed, setRevealed] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [restoreInputKey, setRestoreInputKey] = useState(0);
 
@@ -301,7 +301,7 @@ function App() {
   const currentId = activeSession?.ids[activeSession.index];
   const currentWord = currentId ? data.words.find((word) => word.id === currentId) : undefined;
   const todayStats = data.studyDays[todayKey()] ?? emptyDailyStats();
-  const dueCount = data.words.filter((word) => word.status !== "new" && word.reviewAtCount <= data.reviewCount).length;
+  const dueCount = data.words.filter((word) => isDue(word, data.reviewCount)).length;
   const freshCount = Math.min(
     Math.max(0, data.settings.dailyGoal - todayStats.newIntroduced),
     data.words.filter((word) => word.status === "new").length,
@@ -419,6 +419,8 @@ function App() {
       } else if (!activeSession.feedback && event.key === "1") {
         answerWord("again");
       } else if (!activeSession.feedback && event.key === "2") {
+        answerWord("fuzzy");
+      } else if (!activeSession.feedback && event.key === "3") {
         answerWord("known");
       } else if (activeSession.feedback && event.key === "Enter") {
         continueSession();
@@ -429,9 +431,8 @@ function App() {
   });
 
   function startFreshSession() {
-    const session = { ...createSession(data), mode: data.activeSession?.mode ?? "word-first" };
+    const session = { ...createSession(data, todayKey(), true), mode: data.activeSession?.mode ?? "word-first" };
     setData((previous) => ({ ...previous, activeSession: session }));
-    setRevealed(false);
     if (session.ids.length === 0) {
       notify("当前没有待复习词。继续答题后，达到轮次的词会重新进入队列。");
       return;
@@ -453,67 +454,12 @@ function App() {
   }
 
   function answerWord(rating: Rating) {
-    if (!activeSession || !currentWord || activeSession.feedback) return;
-    const wasNew = currentWord.status === "new";
-    const nextReviewCount = data.reviewCount + 1;
-    const correctStreak = rating === "again" ? 0 : currentWord.correctStreak + 1;
-    const nextStatus: WordStatus = rating === "again"
-      ? "learning"
-      : currentWord.status === "mastered" || correctStreak >= MASTERY_STREAK
-        ? "mastered"
-        : "learning";
-    const reviewBox = rating === "again"
-      ? 0
-      : nextStatus === "mastered"
-        ? Math.min(REVIEW_GAPS.length, currentWord.status === "mastered" ? currentWord.reviewBox + 1 : 1)
-        : currentWord.reviewBox;
-    const reviewGap = nextStatus === "mastered"
-      ? REVIEW_GAPS[Math.max(0, reviewBox - 1)]
-      : RETRY_GAP;
+    if (!currentWord) return;
+    setData(previous => gradeAnswer(previous, currentWord.id, rating));
+  }
 
-    setData((previous) => {
-      const session = previous.activeSession;
-      if (!session || session.feedback || session.ids[session.index] !== currentWord.id) return previous;
-      const days = previous.studyDays[todayKey()] ?? emptyDailyStats();
-      const firstInSession = !session.seenIds.includes(currentWord.id);
-      const nextIds = [...session.ids];
-      const shouldRetryThisSession = rating === "again" || nextStatus === "learning";
-      if (shouldRetryThisSession) {
-        const gap = rating === "again" ? RETRY_GAP : Math.min(4, correctStreak + 1);
-        const retryIndex = Math.min(nextIds.length, session.index + 1 + gap);
-        nextIds.splice(retryIndex, 0, currentWord.id);
-      }
-      return {
-        ...previous,
-        reviewCount: previous.reviewCount + 1,
-        words: previous.words.map((word) => word.id === currentWord.id
-          ? {
-            ...word,
-            status: nextStatus,
-            repetitions: word.repetitions + 1,
-            correctStreak,
-            reviewBox,
-            reviewAtCount: nextReviewCount + reviewGap,
-          }
-          : word),
-        studyDays: {
-          ...previous.studyDays,
-          [todayKey()]: {
-            answered: days.answered + 1,
-            known: days.known + (rating === "known" ? 1 : 0),
-            again: days.again + (rating === "again" ? 1 : 0),
-            newIntroduced: days.newIntroduced + (firstInSession && wasNew ? 1 : 0),
-            reviewIntroduced: days.reviewIntroduced + (firstInSession && !wasNew ? 1 : 0),
-          },
-        },
-        activeSession: {
-          ...session,
-          ids: nextIds,
-          seenIds: firstInSession ? [...session.seenIds, currentWord.id] : session.seenIds,
-          feedback: { wordId: currentWord.id, rating },
-        },
-      };
-    });
+  function correctAnswer() {
+    setData(previous => regradeAnswer(previous, "again"));
   }
 
   function continueSession() {
@@ -523,7 +469,6 @@ function App() {
     setData((previous) => previous.activeSession
       ? { ...previous, activeSession: { ...previous.activeSession, index: nextIndex, feedback: null } }
       : previous);
-    setRevealed(false);
     if (nextWord) void playWord(nextWord);
   }
 
@@ -532,7 +477,6 @@ function App() {
     setData((previous) => previous.activeSession
       ? { ...previous, activeSession: { ...previous.activeSession, mode } }
       : previous);
-    setRevealed(false);
     if (currentWord) void playWord(currentWord);
   }
 
@@ -827,7 +771,7 @@ function App() {
 
   const allCounts = useMemo(() => ({
     new: data.words.filter((word) => word.status === "new").length,
-    due: data.words.filter((word) => word.status !== "new" && word.reviewAtCount <= data.reviewCount).length,
+    due: data.words.filter((word) => isDue(word, data.reviewCount)).length,
     mastered: data.words.filter((word) => word.status === "mastered").length,
   }), [data.words, data.reviewCount]);
 
@@ -837,15 +781,16 @@ function App() {
       const matchesQuery = !query || [word.word, word.meaning, word.phonetic].some((text) => text.toLocaleLowerCase().includes(query));
       const matchesFilter = screenFilter === "all"
         || (screenFilter === "new" && word.status === "new")
-        || (screenFilter === "due" && word.status !== "new" && word.reviewAtCount <= data.reviewCount)
+        || (screenFilter === "due" && isDue(word, data.reviewCount))
         || (screenFilter === "mastered" && word.status === "mastered");
       return matchesQuery && matchesFilter;
     }).sort((a, b) => a.word.localeCompare(b.word));
   }, [data.words, data.reviewCount, screenFilter, search]);
 
   const localVoiceReady = Boolean(piper.configured || localVoice);
-  const dailyTotal = activeSession?.ids.length ?? 0;
-  const progress = dailyTotal > 0 ? Math.min(100, (activeSession!.index / dailyTotal) * 100) : 0;
+  const dailyTotal = new Set(activeSession?.ids ?? []).size;
+  const remainingWords = new Set(activeSession?.ids.slice(activeSession.index + (activeSession.feedback ? 1 : 0)) ?? []).size;
+  const progress = dailyTotal > 0 ? ((dailyTotal - remainingWords) / dailyTotal) * 100 : 0;
 
   if (!ready) {
     return <div className="startup-screen"><div className="startup-mark">词</div><span>正在打开本地词库…</span></div>;
@@ -902,12 +847,12 @@ function App() {
               progress={progress}
               totalWords={data.words.length}
               speaking={speaking}
-              revealed={revealed}
               onMode={changeMode}
               onPlay={() => currentWord && void playWord(currentWord)}
               onAnswer={answerWord}
               onContinue={continueSession}
-              onReveal={() => setRevealed(true)}
+              onReveal={() => answerWord("again")}
+              onCorrect={correctAnswer}
               onStart={startFreshSession}
               onEdit={() => currentWord && openEditWord(currentWord)}
               onBrowse={() => setScreen("library")}
@@ -1026,7 +971,7 @@ function screenLabel(screen: Screen) {
   return ({ study: "每日学习", library: "我的词库", import: "批量导入", stats: "学习统计", settings: "设置与备份" })[screen];
 }
 
-function StudyPage({
+export function StudyPage({
   date,
   session,
   currentWord,
@@ -1037,12 +982,12 @@ function StudyPage({
   progress,
   totalWords,
   speaking,
-  revealed,
   onMode,
   onPlay,
   onAnswer,
   onContinue,
   onReveal,
+  onCorrect,
   onStart,
   onEdit,
   onBrowse,
@@ -1060,12 +1005,12 @@ function StudyPage({
   progress: number;
   totalWords: number;
   speaking: boolean;
-  revealed: boolean;
   onMode: (mode: PracticeMode) => void;
   onPlay: () => void;
   onAnswer: (rating: Rating) => void;
   onContinue: () => void;
   onReveal: () => void;
+  onCorrect: () => void;
   onStart: () => void;
   onEdit: () => void;
   onBrowse: () => void;
@@ -1075,8 +1020,9 @@ function StudyPage({
 }) {
   const finished = Boolean(session && session.ids.length > 0 && session.index >= session.ids.length);
   const feedback = session?.feedback ?? null;
-  const showWord = mode === "word-first" || revealed || Boolean(feedback);
-  const position = session && session.ids.length > 0 ? Math.min(session.index + 1, session.ids.length) : 0;
+  const showWord = mode === "word-first" || Boolean(feedback);
+  const total = new Set(session?.ids ?? []).size;
+  const position = total - new Set(session?.ids.slice(session.index + (feedback ? 1 : 0)) ?? []).size;
   const examples = currentWord?.example.split(/\r?\n/).filter(Boolean) ?? [];
   const translations = currentWord?.translation.split(/\r?\n/) ?? [];
 
@@ -1106,7 +1052,7 @@ function StudyPage({
           </button>
         </div>
         <div className="session-counter">
-          <span>本轮进度</span><strong>{position.toString().padStart(2, "0")}<i>/</i>{(session?.ids.length ?? 0).toString().padStart(2, "0")}</strong>
+          <span>本轮进度</span><strong>{position.toString().padStart(2, "0")}<i>/</i>{total.toString().padStart(2, "0")}</strong>
         </div>
       </div>
       <div className="session-progress"><span style={{ width: `${progress}%` }} /></div>
@@ -1127,16 +1073,14 @@ function StudyPage({
                   <button className={`round-audio ${speaking ? "playing" : ""}`} onClick={onPlay} aria-label={`播放 ${currentWord.word} 的发音`}><Icon name={speaking ? "speaker" : "play"} size={22} /></button>
                 </div>
                 <div className="pronunciation-line"><span>{currentWord.phonetic || "音标待补充"}</span>{currentWord.partOfSpeech && <><span className="dot-separator">·</span><span>{currentWord.partOfSpeech}</span></>}</div>
-                <div className="word-definition">{currentWord.meaning || <span className="muted-italic">释义待补充</span>}</div>
-                {currentWord.example && (
+                {feedback && <div className="word-definition">{currentWord.meaning || <span className="muted-italic">释义待补充</span>}</div>}
+                {feedback && currentWord.example && (
                   <div className="example-block">
                     {examples.map((example, index) => <div className="example-entry" key={`${currentWord.id}-${index}`}><p>{example}</p>{translations[index] && <span>{translations[index]}</span>}</div>)}
                   </div>
                 )}
                 {missingDetails(currentWord) && !feedback && <div className="detail-reminder"><Icon name="spark" size={14} />这条词目还有内容待补充</div>}
-                {feedback && <p className="next-review-copy">{feedback.rating === "again"
-                  ? "不会的词已留在本轮，稍后会再次出现。"
-                  : `连续答对 ${currentWord.correctStreak}/${MASTERY_STREAK} 次${currentWord.status === "mastered" ? "，已进入巩固轮换" : "，还会在本轮再练"}`}</p>}
+                {feedback && <p className="next-review-copy">{feedback.message || "已安排下次复习。"}</p>}
               </div>
             ) : (
               <div className="audio-question animate-word" key={`${currentWord.id}-hidden`}>
@@ -1154,19 +1098,22 @@ function StudyPage({
             <div className="answer-area">
               {!feedback ? (
                 <>
-                  {mode === "audio-first" && !revealed && <button className="reveal-link" onClick={onReveal}>先看答案</button>}
+                  <p className="recall-hint">先回想中文，再选择。选完才会显示释义和例句。</p>
+                  <button className="reveal-link" onClick={onReveal}>想不起来，显示答案</button>
                   <div className="answer-buttons">
                     <button className="answer-button unsure" onClick={() => onAnswer("again")}><span className="answer-shortcut">1</span><span>还不认识</span><Icon name="repeat" size={17} /></button>
-                    <button className="answer-button know" onClick={() => onAnswer("known")}><span className="answer-shortcut">2</span><span>认识</span><Icon name="arrow" size={18} /></button>
+                    <button className="answer-button fuzzy" onClick={() => onAnswer("fuzzy")}><span className="answer-shortcut">2</span><span>模糊</span><Icon name="repeat" size={17} /></button>
+                    <button className="answer-button know" onClick={() => onAnswer("known")}><span className="answer-shortcut">3</span><span>认识</span><Icon name="arrow" size={18} /></button>
                   </div>
-                  <span className="keyboard-hint"><kbd>空格</kbd> 重播 <span>·</span> <kbd>1</kbd> 不认识 <span>·</span> <kbd>2</kbd> 认识</span>
+                  <span className="keyboard-hint"><kbd>空格</kbd> 重播 <span>·</span> <kbd>1</kbd> 不认识 <span>·</span> <kbd>2</kbd> 模糊 <span>·</span> <kbd>3</kbd> 认识</span>
                 </>
               ) : (
-                <button className="continue-button" onClick={onContinue}>{feedback.rating === "again" ? "继续，稍后再练" : "继续学习"} <Icon name="arrow" size={18} /><span className="continue-shortcut">Enter</span></button>
+                <><button className="continue-button" onClick={onContinue}>{feedback.rating === "again" ? "继续，稍后再练" : "继续学习"} <Icon name="arrow" size={18} /><span className="continue-shortcut">Enter</span></button>
+                {feedback.rating !== "again" && Boolean(feedback.undo) && <button className="reveal-link" onClick={onCorrect}>核对后发现没想对，改为不认识</button>}</>
               )}
             </div>
           </div>
-          <div className="study-bottom-line"><span>{mode === "word-first" ? "看词 · 听音 · 判断" : "听音 · 回想 · 判断"}</span><span>答错的词会留在本轮，答对三次后进入巩固轮换</span></div>
+          <div className="study-bottom-line"><span>{mode === "word-first" ? "看词 · 听音 · 判断" : "听音 · 回想 · 判断"}</span><span>不认识更早重练，模糊稍后重练；认识才拉开间隔</span></div>
         </div>
       ) : (
         <div className="session-complete">
@@ -1177,12 +1124,13 @@ function StudyPage({
             ? `这一轮完成了 ${session?.ids.length ?? 0} 次练习。词条会在积累到指定答题次数后回到队列。`
             : totalWords === 0
               ? "先添加或导入一些单词，马上开始练习。"
-              : "现在没有待复习词。继续练习其他词，达到答题轮次后它们会再次进入队列。"}</p>
+              : "今日队列已完成。可以休息，也可以主动开始额外巩固。"}</p>
+          {Boolean(session?.deferredIds?.length) && <p>{session!.deferredIds!.length} 个词本轮已反复练习，仍保留在待复习中。</p>}
           <div className="complete-actions">
-            <button className="primary-action" onClick={totalWords === 0 ? onBrowse : onStart}><Icon name={totalWords === 0 ? "plus" : "refresh"} size={17} />{totalWords === 0 ? "添加第一个单词" : finished ? "开始新一轮" : "刷新学习队列"}</button>
+            <button className="primary-action" onClick={totalWords === 0 ? onBrowse : onStart}><Icon name={totalWords === 0 ? "plus" : "refresh"} size={17} />{totalWords === 0 ? "添加第一个单词" : "开始额外巩固"}</button>
             <button className="text-action" onClick={totalWords ? onBrowse : onSettings}>{totalWords ? "查看词库" : "打开设置"}<Icon name="arrow" size={16} /></button>
           </div>
-          <div className="complete-note"><span className="local-dot" />答对 {todayStats.known} 次 · 标记不会 {todayStats.again} 次 · 剩余新词 {freshCount} 个 · 待复习 {dueCount} 个</div>
+          <div className="complete-note"><span className="local-dot" />认识 {todayStats.known} 次 · 模糊 {todayStats.fuzzy ?? 0} 次 · 标记不会 {todayStats.again} 次 · 剩余新词 {freshCount} 个 · 待复习 {dueCount} 个</div>
         </div>
       )}
       {!voiceReady && <button className="voice-warning" onClick={onSettings}><Icon name="speaker" size={17} /><span>没有检测到离线英语语音。请配置本地 Piper 或安装系统离线语音。</span><Icon name="arrow" size={16} /></button>}
@@ -1387,7 +1335,7 @@ function StatsPage({ data, dueCount, freshCount }: { data: AppData; dueCount: nu
       <PageHeading eyebrow="YOUR LEARNING RHYTHM" title="学习统计" subtitle="看见那些正在变成长期记忆的词。" />
       <div className="stats-metrics">
         <div><span>词库总量</span><strong>{data.words.length}<i>词</i></strong><small>{newWords} 个等待初次学习</small></div>
-        <div><span>累计练习</span><strong>{totalReviewed}<i>次</i></strong><small>正确反馈率 {accuracy}%</small></div>
+        <div><span>累计练习</span><strong>{totalReviewed}<i>次</i></strong><small>认识反馈率 {accuracy}%</small></div>
         <div><span>已掌握</span><strong>{mastered}<i>词</i></strong><small>{learning} 个正在巩固</small></div>
       </div>
 
@@ -1399,7 +1347,7 @@ function StatsPage({ data, dueCount, freshCount }: { data: AppData; dueCount: nu
       </div>
 
       <div className="review-rhythm">
-        <div><span className="eyebrow"><span className="eyebrow-line" />复习节奏</span><h2>答错的词，会回到你的练习队列。</h2><p>复习不按分钟或日期排期，而按全局答题次数推进。新词连续答对 3 次后进入巩固轮换；答错会清零连续正确次数，并在本轮稍后重新出现。已掌握的词会按累计答题轮次逐步拉开复习间隔。</p></div>
+        <div><span className="eyebrow"><span className="eyebrow-line" />复习节奏</span><h2>答错的词，会回到你的练习队列。</h2><p>复习不按分钟或日期排期，而按全局答题次数推进。新词连续确认认识 2 次后进入巩固轮换；不认识清零连续认识次数，模糊不计为认识，两者均在本轮重练。单词本轮练习 6 次仍未掌握时暂停，保留在待复习中。</p></div>
         <div className="rhythm-counts"><div><span className="rhythm-dot due-dot" /><strong>{dueCount}</strong><span>当前待复习</span></div><div><span className="rhythm-dot new-dot" /><strong>{freshCount}</strong><span>今日新词计划</span></div><div><span className="rhythm-dot learned-dot" /><strong>{mastered}</strong><span>已进入巩固轮换</span></div></div>
       </div>
       <div className="stats-footnote"><span className="local-dot" />统计数据跟随词库保存在本地，导出备份可一并迁移。</div>

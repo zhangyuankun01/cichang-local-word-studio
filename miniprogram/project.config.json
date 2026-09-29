@@ -1,0 +1,11 @@
+{
+  "description": "词场微信小程序（本地开发版）",
+  "packOptions": { "ignore": [{ "type": "folder", "value": "cloudflare-worker" }, { "type": "file", "value": "README.md" }, { "type": "file", "value": "shared/domain.d.ts" }] },
+  "setting": { "es6": true, "enhance": true, "postcss": true, "minified": true, "urlCheck": true },
+  "compileType": "miniprogram",
+  "libVersion": "3.8.12",
+  "appid": "touristappid",
+  "projectname": "cichang-miniprogram",
+  "miniprogramRoot": "./",
+  "condition": {}
+}

@@ -8,10 +8,12 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run build:mini-shared && vite build",
     "preview": "vite preview",
     "start": "npm run build && electron electron/main.cjs",
-    "desktop:pack": "npm run build && electron-builder --config electron-builder.config.cjs"
+    "desktop:pack": "npm run build && electron-builder --config electron-builder.config.cjs",
+    "build:mini-shared": "node scripts/build-mini-shared.cjs",
+    "test:study": "node --test tests/study.test.cjs"
   },
   "dependencies": {
     "clsx": "2.1.1",

@@ -1,0 +1,63 @@
+<view class="app-shell">
+  <view class="topline"><view><text class="eyebrow">CICHANG · WORD STUDIO</text><view class="title">{{tab === 'study' ? '每日学习' : tab === 'library' ? '我的词库' : '数据与设置'}}</view></view><view class="pill">{{wordCount}} 词</view></view>
+  <view wx:if="storageError" class="warning">{{storageError}}</view>
+  <view wx:if="tab === 'study'" class="study">
+    <view class="progress-row"><text>本轮 {{sessionDone}} / {{sessionTotal}} 词</text><text>今日新词 {{todayNew}} · 复习 {{todayReview}}</text></view>
+    <view class="progress"><view style="width:{{progress}}%"></view></view>
+    <view wx:if="currentWord" class="word-card">
+      <view wx:if="showWord" class="word-meta"><text>{{currentWord.partOfSpeech || '词汇'}}</text><text>{{currentWord.phonetic}}</text></view>
+      <view wx:if="showWord" class="word">{{currentWord.word}}</view><view wx:else class="word hidden-word">先听音，再回想</view>
+      <button class="listen" bindtap="playCurrent">▶　{{audioStatus || '播放发音'}}</button>
+      <block wx:if="showAnswer">
+        <view class="meaning">{{currentWord.meaning || '释义尚未填写，请在词库里补充'}}</view>
+        <view wx:if="currentWord.example" class="example">{{currentWord.example}}<text>{{currentWord.translation}}</text></view>
+      </block>
+      <view wx:else class="recall-prompt">先在心里说出中文，再判断是否认识。<text>选完后显示释义与例句。</text></view>
+      <view wx:if="feedback" class="feedback">{{feedback.rating === 'again' ? '不认识' : feedback.rating === 'fuzzy' ? '模糊' : '认识'}} · {{feedback.message}}</view>
+      <view wx:if="!feedback" class="answers">
+        <button class="again" disabled="{{!!storageError}}" bindtap="markAgain">不认识</button>
+        <button class="fuzzy" disabled="{{!!storageError}}" bindtap="markFuzzy">模糊</button>
+        <button class="known" disabled="{{!!storageError}}" bindtap="markKnown">认识</button>
+      </view>
+      <block wx:else>
+        <button class="continue" bindtap="continueStudy">核对完了，继续</button>
+        <button wx:if="feedback.canCorrect" class="reveal" bindtap="correctAnswer">没想对，改为不认识</button>
+      </block>
+      <button wx:if="!feedback" class="reveal" bindtap="reveal">想不起来，显示答案</button>
+    </view>
+    <view wx:else class="empty-card"><text class="empty-icon">✦</text><view class="empty-title">{{wordCount ? '这一轮，先到这里' : '添加你的第一组词'}}</view><view class="muted">{{wordCount ? '可以休息，也可以选择额外巩固。新词目标可在“我的”中调整。' : '在词库添加，或在“我的”导入词汇文件。'}}</view><view wx:if="deferredCount" class="warning">{{deferredCount}} 个词本轮反复练习后仍需巩固，已留在待复习中。</view><button wx:if="wordCount" class="continue" data-extra="true" bindtap="startSession">开始额外巩固</button></view>
+    <view class="mode-row"><button class="mode {{mode === 'word-first' ? 'selected' : ''}}" bindtap="setWordFirst">看词听音</button><button class="mode {{mode === 'audio-first' ? 'selected' : ''}}" bindtap="setAudioFirst">听音猜词</button></view>
+    <view class="footnote">认识：能说出意思。模糊：有印象但拿不准。不认识：想不起来或想错了。</view>
+  </view>
+  <view wx:if="tab === 'library'" class="library">
+    <view class="library-actions"><input class="search" placeholder="搜索单词或释义" value="{{query}}" bindinput="search"/><button class="small-action" bindtap="addWord">＋ 添加</button></view>
+    <view class="filter-row"><button class="filter {{filter === 'all' ? 'active' : ''}}" data-filter="all" bindtap="setFilter">全部</button><button class="filter {{filter === 'due' ? 'active' : ''}}" data-filter="due" bindtap="setFilter">待复习</button><button class="filter {{filter === 'new' ? 'active' : ''}}" data-filter="new" bindtap="setFilter">新词</button><button class="filter {{filter === 'mastered' ? 'active' : ''}}" data-filter="mastered" bindtap="setFilter">已掌握</button></view>
+    <view wx:for="{{visibleWords}}" wx:key="id" class="word-row"><view class="word-copy" data-id="{{item.id}}" bindtap="editWord"><view class="row-word">{{item.word}}</view><view class="row-meaning">{{item.meaning || '点击补充释义'}}</view></view><button class="play-mini" data-id="{{item.id}}" bindtap="playWord">▶</button><button class="delete-mini" data-id="{{item.id}}" bindtap="deleteWord">删除</button></view>
+    <button wx:if="visibleWords.length < filteredCount" class="outline-button" bindtap="loadMore">加载更多（共 {{filteredCount}} 词）</button>
+    <view wx:if="visibleWords.length === 0" class="muted empty-list">没有找到词条</view>
+  </view>
+  <view wx:if="tab === 'settings'" class="settings">
+    <view class="setting-card"><view class="setting-title">学习计划</view><view class="setting-line"><text>每日新词</text><input type="number" value="{{settings.dailyGoal}}" data-key="dailyGoal" bindblur="updateGoal"/></view><view class="setting-line"><text>每日复习</text><input type="number" value="{{settings.dailyReviewGoal}}" data-key="dailyReviewGoal" bindblur="updateGoal"/></view><view class="muted">按不同单词计数；同一个词重练不重复消耗额度。修改目标不会中断正在进行的一轮。</view></view>
+    <view class="setting-card"><view class="setting-title">今天的学习</view><view class="muted">新词 {{todayNew}} 个 · 复习 {{todayReview}} 个 · 作答 {{todayAnswered}} 次 · 模糊 {{todayFuzzy}} 次</view></view>
+    <view class="setting-card"><view class="setting-title">自动发音</view><view class="muted">已有 {{audioCount}} / {{wordCount}} 条本机发音。生成后可离线播放，无需录音。</view><view wx:if="audioState.busy" class="endpoint">正在准备发音，还剩 {{audioState.remaining}} 条</view><view wx:if="!ttsReady" class="muted">在线发音尚未启用；可先导入桌面版含录音的备份。</view><view wx:if="audioState.error" class="warning">{{audioState.error}}</view><button wx:if="audioState.error" class="outline-button" bindtap="retryAudio">重试准备发音</button></view>
+    <view class="setting-card"><view class="setting-title">词库与备份</view><button class="outline-button" bindtap="importFile">导入词库 / 恢复备份</button><button class="outline-button" bindtap="exportBackup">导出完整备份 JSON</button><button class="outline-button" bindtap="exportWords">导出词库 CSV</button><view class="muted">JSON 包含词条、复习进度和可读取的本机录音。CSV 仅包含词条文本。</view></view>
+    <view wx:if="importPreview" class="setting-card">
+      <view class="setting-title">导入前检查</view><view class="muted">{{importPreview.name}}</view>
+      <view>有效 {{importPreview.count}} · 已有 {{importPreview.duplicateCount}} · 无效 {{importPreview.invalidCount}} · 文件内重复 {{importPreview.repeated}}</view>
+      <view wx:for="{{importPreview.rows}}" wx:key="word" class="preview-row">{{item.word}} · {{item.meaning || '释义待补'}}</view>
+      <view wx:for="{{importPreview.errors}}" wx:key="*this" class="warning">{{item}}</view>
+      <view class="mode-row"><button class="mode {{duplicatePolicy === 'skip' ? 'selected' : ''}}" data-policy="skip" bindtap="setDuplicatePolicy">跳过已有词</button><button class="mode {{duplicatePolicy === 'update' ? 'selected' : ''}}" data-policy="update" bindtap="setDuplicatePolicy">更新释义，保留进度</button></view>
+      <button class="continue" disabled="{{!importPreview.count}}" bindtap="confirmImport">确认导入</button><button class="reveal" bindtap="cancelImport">取消</button>
+    </view>
+  </view>
+  <view wx:if="editorOpen" class="editor-mask"><scroll-view scroll-y class="editor-card"><view class="setting-title">编辑词条</view>
+    <label>英文<input value="{{draft.word}}" data-field="word" bindinput="changeDraft" placeholder="例如 resilient"/></label>
+    <label>中文释义<textarea value="{{draft.meaning}}" data-field="meaning" bindinput="changeDraft" maxlength="2000" placeholder="有韧性的；能恢复的"/></label>
+    <label>词性<input value="{{draft.partOfSpeech}}" data-field="partOfSpeech" bindinput="changeDraft"/></label>
+    <label>音标<input value="{{draft.phonetic}}" data-field="phonetic" bindinput="changeDraft"/></label>
+    <label>英文例句<textarea value="{{draft.example}}" data-field="example" bindinput="changeDraft" maxlength="4000"/></label>
+    <label>例句中文<textarea value="{{draft.translation}}" data-field="translation" bindinput="changeDraft" maxlength="4000"/></label>
+    <button class="continue" bindtap="saveWord">保存词条</button><button class="reveal" bindtap="closeEditor">取消</button>
+  </scroll-view></view>
+  <view class="tabbar"><button class="tab {{tab === 'study' ? 'chosen' : ''}}" data-tab="study" bindtap="switchTab">学习</button><button class="tab {{tab === 'library' ? 'chosen' : ''}}" data-tab="library" bindtap="switchTab">词库</button><button class="tab {{tab === 'settings' ? 'chosen' : ''}}" data-tab="settings" bindtap="switchTab">我的</button></view>
+</view>

@@ -11,6 +11,9 @@ const __dirname = path.dirname(__filename);
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), viteSingleFile()],
+  build: {
+    commonjsOptions: { include: [/miniprogram\/shared\/domain\.js/, /node_modules/] },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
